@@ -1,0 +1,37 @@
+<h2>All Menu Items</h2>
+
+<table border="1" cellpadding="10">
+    <tr>
+        <th>Name</th>
+        <th>Category</th>
+        <th>Price</th>
+        <th>Stock</th>
+        <th>Status</th>
+        <th>Update Stock</th>
+    </tr>
+
+    {% for item in items %}
+    <tr>
+        <td>{{ item.name }}</td>
+        <td>{{ item.category.name }}</td>
+        <td>₹ {{ item.price }}</td>
+        <td>{{ item.stock }}</td>
+        <td>
+            {% if item.stock == 0 %}
+                Not Available
+            {% else %}
+                Available
+            {% endif %}
+        </td>
+        <td>
+            <form action="{{ url_for('update_stock', item_id=item.id) }}" method="POST">
+                <input type="number" name="added_stock" min="1" required>
+                <button type="submit">Add</button>
+            </form>
+        </td>
+    </tr>
+    {% endfor %}
+</table>
+
+<br>
+<a href="/admin">Back</a>

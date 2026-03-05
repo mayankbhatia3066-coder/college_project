@@ -1,0 +1,27 @@
+<h2>All Orders</h2>
+
+<table border="1" cellpadding="10">
+<tr>
+    <th>ID</th>
+    <th>Table</th>
+    <th>Status</th>
+    <th>Total</th>
+    <th>Action</th>
+</tr>
+
+{% for order in orders %}
+<tr>
+    <td>{{ order.id }}</td>
+    <td>{{ order.table.table_number }}</td>
+    <td>{{ order.status }}</td>
+    <td>₹ {{ order.total_amount }}</td>
+    <td>
+        {% if order.status != "Completed" %}
+        <a href="{{ url_for('complete_order', order_id=order.id) }}">Complete</a>
+        {% endif %}
+    </td>
+</tr>
+{% endfor %}
+</table>
+
+<a href="/admin">Back</a>

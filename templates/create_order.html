@@ -1,0 +1,32 @@
+<h2>Create Order</h2>
+
+<form method="POST">
+
+    <label>Select Table:</label><br>
+    <select name="table_id" required>
+        {% for table in tables %}
+            <option value="{{ table.id }}">
+                Table {{ table.table_number }} ({{ table.status }})
+            </option>
+        {% endfor %}
+    </select>
+    <br><br>
+
+    <label>Select Items:</label><br>
+
+    {% for item in items %}
+        <div>
+            <input type="checkbox" name="item_ids" value="{{ item.id }}">
+            {{ item.name }} - ₹{{ item.price }}
+
+            Quantity:
+            <input type="number" name="quantity_{{ item.id }}" min="1" value="1">
+        </div>
+    {% endfor %}
+
+    <br>
+    <button type="submit">Create Order</button>
+</form>
+
+<br>
+<a href="/waiter">Back</a>

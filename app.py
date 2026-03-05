@@ -237,6 +237,57 @@ def complete_order(order_id):
     db.session.commit()
 
     return redirect(url_for('waiter_dashboard'))
+# ========================
+# Kitchen Orders
+# ========================
+
+@app.route('/kitchen-orders')
+@login_required
+def kitchen_orders():
+    orders = Order.query.filter(Order.status != "Completed").all()
+    return render_template('kitchen_orders.html', orders=orders)
+@app.route('/start-cooking/<int:order_id>')
+#Kitchen Start Cooking Route
+@login_required
+def start_cooking(order_id):
+    order = Order.query.get_or_404(order_id)
+    order.status = "Preparing"
+    db.session.commit()
+
+    return redirect(url_for('kitchen_orders'))
+#Mark Order Ready
+@app.route('/order-ready/<int:order_id>')
+@login_required
+def order_ready(order_id):
+    order = Order.query.get_or_404(order_id)
+    order.status = "Ready"
+    db.session.commit()
+
+    return redirect(url_for('kitchen_orders'))
+# ========================
+# Cashier Orders
+# ========================
+
+@app.route('/cashier-orders')
+@login_required
+def cashier_orders():
+    orders = Order.query.filter_by(status="Ready").all()
+    return render_template('cashier_orders.html', orders=orders)
+#Payment Route
+@app.route('/complete-payment/<int:order_id>')
+@login_required
+def complete_payment(order_id):
+
+    order = Order.query.get_or_404(order_id)
+
+    order.status = "Completed"
+
+    table = Table.query.get(order.table_id)
+    table.status = "Free"
+
+    db.session.commit()
+
+    return redirect(url_for('cashier_orders'))
 #==========================
 #ADD ORDER LIST PAGE
 #==========================

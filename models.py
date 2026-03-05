@@ -49,10 +49,11 @@ class Order(db.Model):
     id = db.Column(db.Integer, primary_key=True)
 
     table_id = db.Column(db.Integer, db.ForeignKey('table.id'))
-    table = db.relationship('Table', backref='orders')   # ADD THIS
+    table = db.relationship('Table', backref='orders')
 
     waiter_id = db.Column(db.Integer, db.ForeignKey('user.id'))
-    waiter = db.relationship('User', backref='orders')   # ADD THIS
+    waiter = db.relationship('User', backref='orders')
 
     status = db.Column(db.String(20), default="Pending")
+
     total_amount = db.Column(db.Float, default=0)

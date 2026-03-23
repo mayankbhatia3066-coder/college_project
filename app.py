@@ -2,15 +2,47 @@ from flask import Flask, render_template, redirect, request, url_for
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from config import Config
-from models import db, User, Role,MenuCategory, MenuItem, Order,OrderItem,Table
+from models import db, User, Role, MenuCategory, MenuItem, Order, OrderItem, Table
 import threading
 import webbrowser
+
 app = Flask(__name__)
 app.config.from_object(Config)
 
+# ---------------- BACK BUTTON FIX ----------------
+@app.after_request
+def add_header(response):
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
 
+# ---------------- ROLE CHECK (SMART REDIRECT) ----------------
+def role_required(role_id):
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            if not current_user.is_authenticated:
+                return redirect(url_for('login'))
+
+            if current_user.role_id != role_id:
+                if current_user.role_id == 1:
+                    return redirect(url_for('admin_dashboard'))
+                elif current_user.role_id == 2:
+                    return redirect(url_for('waiter_dashboard'))
+                elif current_user.role_id == 3:
+                    return redirect(url_for('kitchen_dashboard'))
+                elif current_user.role_id == 4:
+                    return redirect(url_for('cashier_dashboard'))
+
+            return func(*args, **kwargs)
+        wrapper.__name__ = func.__name__
+        return wrapper
+    return decorator
+
+# ---------------- INIT ----------------
 def open_browser():
     webbrowser.open_new("http://127.0.0.1:5000")
+
 db.init_app(app)
 
 login_manager = LoginManager()
@@ -21,12 +53,7 @@ login_manager.login_view = "login"
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-
-# ===============================
-# Create DB and Default Users
-# ===============================
-
-#@app.before_first_request
+# ---------------- DB SETUP ----------------
 with app.app_context():
     db.create_all()
 
@@ -55,56 +82,13 @@ with app.app_context():
 
         db.session.add_all([admin_user, waiter_user])
         db.session.commit()
-        if not Table.query.first():
-             for i in range(1, 6):
-              db.session.add(Table(table_number=i))
-        db.session.commit()
-# ===============================
-# Category Route
-# ===============================
-@app.route('/add-category', methods=['GET', 'POST'])
-@login_required
-def add_category():
-    if request.method == 'POST':
-        name = request.form['name']
-        category = MenuCategory(name=name)
-        db.session.add(category)
-        db.session.commit()
-        return redirect(url_for('admin_dashboard'))
 
-    return render_template('add_category.html')
-# ===============================
-# Item Route
-# ===============================
-@app.route('/add-item', methods=['GET', 'POST'])
-@login_required
-def add_item():
-    categories = MenuCategory.query.all()
-
-    if request.method == 'POST':
-        name = request.form['name']
-        price = float(request.form['price'])
-        category_id = request.form['category_id']
-        stock = int(request.form['stock'])
-
-        item = MenuItem(
-            name=name,
-            price=price,
-            category_id=category_id,
-            stock=stock,
-            is_available=True if stock > 0 else False
-        )
-
-        db.session.add(item)
+    if not Table.query.first():
+        for i in range(1, 6):
+            db.session.add(Table(table_number=i))
         db.session.commit()
 
-        return redirect(url_for('admin_dashboard'))
-
-    return render_template('add_item.html', categories=categories)
-# ===============================
-# Routes
-# ===============================
-
+# ---------------- LOGIN ----------------
 @app.route('/', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -126,43 +110,106 @@ def login():
                 return redirect(url_for('cashier_dashboard'))
 
     return render_template('login.html')
-#==================
-#item route 
-#==================
+
+# ---------------- DASHBOARDS ----------------
+@app.route('/admin')
+@role_required(1)
+def admin_dashboard():
+    return render_template('admin_dashboard.html')
+
+@app.route('/waiter')
+@role_required(2)
+def waiter_dashboard():
+    return render_template('waiter_dashboard.html')
+
+@app.route('/kitchen')
+@role_required(3)
+def kitchen_dashboard():
+    return render_template('kitchen_dashboard.html')
+
+@app.route('/cashier')
+@role_required(4)
+def cashier_dashboard():
+    return render_template('cashier_dashboard.html')
+
+# ---------------- CATEGORY ----------------
+@app.route('/add-category', methods=['GET', 'POST'])
+@role_required(1)
+def add_category():
+    if request.method == 'POST':
+        db.session.add(MenuCategory(name=request.form['name']))
+        db.session.commit()
+        return redirect(url_for('admin_dashboard'))
+    return render_template('add_category.html')
+
+# ---------------- ITEM ----------------
+@app.route('/add-item', methods=['GET', 'POST'])
+@role_required(1)
+def add_item():
+    categories = MenuCategory.query.all()
+
+    if request.method == 'POST':
+        item = MenuItem(
+            name=request.form['name'],
+            price=float(request.form['price']),
+            category_id=request.form['category_id'],
+            stock=int(request.form['stock']),
+            is_available=True
+        )
+        db.session.add(item)
+        db.session.commit()
+        return redirect(url_for('admin_dashboard'))
+
+    return render_template('add_item.html', categories=categories)
+
 @app.route('/view-items')
-@login_required
+@role_required(1)
 def view_items():
     items = MenuItem.query.all()
     return render_template('view_items.html', items=items)
 
-#======================
-#toggle route
-#======================
 @app.route('/toggle-item/<int:item_id>')
-@login_required
+@role_required(1)
 def toggle_item(item_id):
     item = MenuItem.query.get_or_404(item_id)
     item.is_available = not item.is_available
     db.session.commit()
     return redirect(url_for('view_items'))
-#=======================
-#Order Route
-#=======================
-@app.route('/create-order', methods=['GET', 'POST'])
+
+@app.route('/update-stock/<int:item_id>', methods=['POST'])
+@role_required(1)
+def update_stock(item_id):
+    item = MenuItem.query.get_or_404(item_id)
+    item.stock += int(request.form['added_stock'])
+
+    if item.stock > 0:
+        item.is_available = True
+
+    db.session.commit()
+    return redirect(url_for('view_items'))
+
+# ---------------- ORDERS ----------------
+@app.route('/orders')
 @login_required
+def view_orders():
+    if current_user.role_id == 1:
+        orders = Order.query.all()
+    elif current_user.role_id == 2:
+        orders = Order.query.filter_by(waiter_id=current_user.id).all()
+    else:
+        return redirect(url_for('login'))
+
+    return render_template('orders.html', orders=orders)
+
+@app.route('/create-order', methods=['GET', 'POST'])
+@role_required(2)
 def create_order():
     tables = Table.query.filter_by(status="Free").all()
     items = MenuItem.query.filter_by(is_available=True).all()
 
     if request.method == 'POST':
-        table_id = request.form['table_id']
-        selected_items = request.form.getlist('item_ids')
-
-        if not selected_items:
-            return "Please select at least one item"
-
         order = Order(
-            table_id=table_id,
+            table_id=request.form['table_id'],
             waiter_id=current_user.id
         )
         db.session.add(order)
@@ -170,165 +217,84 @@ def create_order():
 
         total_amount = 0
 
-        for item_id in selected_items:
-          quantity = int(request.form.get(f'quantity_{item_id}', 1))
-          menu_item = MenuItem.query.get(item_id)
+        for item_id in request.form.getlist('item_ids'):
+            quantity = int(request.form.get(f'quantity_{item_id}', 1))
+            menu_item = MenuItem.query.get(item_id)
 
-          if menu_item.stock < quantity:
-           return f"Not enough stock for {menu_item.name}"
+            if menu_item.stock < quantity:
+                return f"Not enough stock for {menu_item.name}"
 
-         # Decrease stock
-          menu_item.stock -= quantity
+            menu_item.stock -= quantity
+            if menu_item.stock == 0:
+                menu_item.is_available = False
 
-         # Auto disable if stock becomes 0
-          if menu_item.stock == 0:
-            menu_item.is_available = False
-
-          order_item = OrderItem(
-          order_id=order.id,
-          menu_item_id=item_id,
-          quantity=quantity
-    )
-
-          db.session.add(order_item)
-
-          total_amount += menu_item.price * quantity
+            db.session.add(OrderItem(order_id=order.id, menu_item_id=item_id, quantity=quantity))
+            total_amount += menu_item.price * quantity
 
         order.total_amount = total_amount
-
-        table = Table.query.get(table_id)
-        table.status = "Occupied"
+        Table.query.get(order.table_id).status = "Occupied"
 
         db.session.commit()
-
         return redirect(url_for('waiter_dashboard'))
 
     return render_template('create_order.html', tables=tables, items=items)
-#=======================
-#Manual Stock Update
-#=======================
-@app.route('/update-stock/<int:item_id>', methods=['POST'])
-@login_required
-def update_stock(item_id):
-    item = MenuItem.query.get_or_404(item_id)
 
-    added_stock = int(request.form['added_stock'])
-    item.stock += added_stock
-
-    if item.stock > 0:
-        item.is_available = True
-
-    db.session.commit()
-
-    return redirect(url_for('view_items'))
-#=========================
-#Complete Order & Free Table
-#=========================
 @app.route('/complete-order/<int:order_id>')
-@login_required
+@role_required(2)
 def complete_order(order_id):
     order = Order.query.get_or_404(order_id)
-
     order.status = "Completed"
-
-    table = Table.query.get(order.table_id)
-    table.status = "Free"
-
+    Table.query.get(order.table_id).status = "Free"
     db.session.commit()
-
     return redirect(url_for('waiter_dashboard'))
-# ========================
-# Kitchen Orders
-# ========================
 
+# ---------------- KITCHEN ----------------
 @app.route('/kitchen-orders')
-@login_required
+@role_required(3)
 def kitchen_orders():
     orders = Order.query.filter(Order.status != "Completed").all()
     return render_template('kitchen_orders.html', orders=orders)
+
 @app.route('/start-cooking/<int:order_id>')
-#Kitchen Start Cooking Route
-@login_required
+@role_required(3)
 def start_cooking(order_id):
     order = Order.query.get_or_404(order_id)
     order.status = "Preparing"
     db.session.commit()
-
     return redirect(url_for('kitchen_orders'))
-#Mark Order Ready
+
 @app.route('/order-ready/<int:order_id>')
-@login_required
+@role_required(3)
 def order_ready(order_id):
     order = Order.query.get_or_404(order_id)
     order.status = "Ready"
     db.session.commit()
-
     return redirect(url_for('kitchen_orders'))
-# ========================
-# Cashier Orders
-# ========================
 
+# ---------------- CASHIER ----------------
 @app.route('/cashier-orders')
-@login_required
+@role_required(4)
 def cashier_orders():
     orders = Order.query.filter_by(status="Ready").all()
     return render_template('cashier_orders.html', orders=orders)
-#Payment Route
+
 @app.route('/complete-payment/<int:order_id>')
-@login_required
+@role_required(4)
 def complete_payment(order_id):
-
     order = Order.query.get_or_404(order_id)
-
     order.status = "Completed"
-
-    table = Table.query.get(order.table_id)
-    table.status = "Free"
-
+    Table.query.get(order.table_id).status = "Free"
     db.session.commit()
-
     return redirect(url_for('cashier_orders'))
-#==========================
-#ADD ORDER LIST PAGE
-#==========================
 
-@app.route('/orders')
-@login_required
-def view_orders():
-    orders = Order.query.all()
-    return render_template('orders.html', orders=orders)
-#==========================
-@app.route('/admin')
-@login_required
-def admin_dashboard():
-    return render_template('admin_dashboard.html')
-
-
-@app.route('/waiter')
-@login_required
-def waiter_dashboard():
-    return render_template('waiter_dashboard.html')
-
-
-@app.route('/kitchen')
-@login_required
-def kitchen_dashboard():
-    return render_template('kitchen_dashboard.html')
-
-
-@app.route('/cashier')
-@login_required
-def cashier_dashboard():
-    return render_template('cashier_dashboard.html')
-
-
+# ---------------- LOGOUT ----------------
 @app.route('/logout')
 @login_required
 def logout():
     logout_user()
     return redirect(url_for('login'))
 
-
+# ---------------- RUN ----------------
 if __name__ == '__main__':
-      threading.Timer(1, open_browser).start()
-      app.run(debug=True)
+    threading.Timer(1, open_browser).start()
+    app.run(debug=True)

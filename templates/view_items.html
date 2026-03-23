@@ -24,10 +24,10 @@
             {% endif %}
         </td>
         <td>
-            <form action="{{ url_for('update_stock', item_id=item.id) }}" method="POST">
-                <input type="number" name="added_stock" min="1" required>
-                <button type="submit">Add</button>
-            </form>
+          <form action="{{ url_for('update_stock', item_id=item.id) }}" method="POST">
+                 <input type="number" name="added_stock" required>
+                   <button type="submit">Update</button>
+        </form>
         </td>
     </tr>
     {% endfor %}

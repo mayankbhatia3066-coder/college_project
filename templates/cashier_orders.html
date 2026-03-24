@@ -1,30 +1,28 @@
-<h1>Cashier Billing</h1>
+<h2>Cashier Orders</h2>
 
-<table border="1">
-<tr>
-    <th>Order ID</th>
-    <th>Table</th>
-    <th>Total</th>
-    <th>Status</th>
-    <th>Action</th>
-</tr>
+<table border="1" cellpadding="10">
+    <tr>
+        <th>Order ID</th>
+        <th>Table</th>
+        <th>Total Amount</th>
+        <th>Status</th>
+        <th>Action</th>
+    </tr>
 
-{% for order in orders %}
-<tr>
-    <td>{{ order.id }}</td>
-    <td>Table {{ order.table.table_number }}</td>
-    <td>₹ {{ order.total_amount }}</td>
-    <td>{{ order.status }}</td>
-
-    <td>
-        <a href="/complete-payment/{{ order.id }}">
-            Payment Done
-        </a>
-    </td>
-</tr>
-{% endfor %}
-
+    {% for order in orders %}
+    <tr>
+        <td>{{ order.id }}</td>
+        <td>{{ order.table_id }}</td>
+        <td>{{ order.total_amount }}</td>
+        <td>{{ order.status }}</td>
+        <td>
+            <a href="{{ url_for('complete_payment', order_id=order.id) }}">
+                Complete Payment
+            </a>
+        </td>
+    </tr>
+    {% endfor %}
 </table>
 
 <br>
-<a href="/cashier">Back</a>
+<a href="{{ url_for('cashier_dashboard') }}">Back</a>

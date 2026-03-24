@@ -17,28 +17,6 @@ def add_header(response):
     response.headers["Expires"] = "0"
     return response
 
-# ---------------- ROLE CHECK (SMART REDIRECT) ----------------
-def role_required(role_id):
-    def decorator(func):
-        def wrapper(*args, **kwargs):
-            if not current_user.is_authenticated:
-                return redirect(url_for('login'))
-
-            if current_user.role_id != role_id:
-                if current_user.role_id == 1:
-                    return redirect(url_for('admin_dashboard'))
-                elif current_user.role_id == 2:
-                    return redirect(url_for('waiter_dashboard'))
-                elif current_user.role_id == 3:
-                    return redirect(url_for('kitchen_dashboard'))
-                elif current_user.role_id == 4:
-                    return redirect(url_for('cashier_dashboard'))
-
-            return func(*args, **kwargs)
-        wrapper.__name__ = func.__name__
-        return wrapper
-    return decorator
-
 # ---------------- INIT ----------------
 def open_browser():
     webbrowser.open_new("http://127.0.0.1:5000")
@@ -113,39 +91,54 @@ def login():
 
 # ---------------- DASHBOARDS ----------------
 @app.route('/admin')
-@role_required(1)
+@login_required
 def admin_dashboard():
+    if current_user.role_id != 1:
+        return redirect(url_for('login'))
     return render_template('admin_dashboard.html')
 
 @app.route('/waiter')
-@role_required(2)
+@login_required
 def waiter_dashboard():
+    if current_user.role_id != 2:
+        return redirect(url_for('login'))
     return render_template('waiter_dashboard.html')
 
 @app.route('/kitchen')
-@role_required(3)
+@login_required
 def kitchen_dashboard():
+    if current_user.role_id != 3:
+        return redirect(url_for('login'))
     return render_template('kitchen_dashboard.html')
 
 @app.route('/cashier')
-@role_required(4)
+@login_required
 def cashier_dashboard():
+    if current_user.role_id not in [1, 4]:
+        return redirect(url_for('login'))
     return render_template('cashier_dashboard.html')
 
 # ---------------- CATEGORY ----------------
 @app.route('/add-category', methods=['GET', 'POST'])
-@role_required(1)
+@login_required
 def add_category():
+    if current_user.role_id != 1:
+        return redirect(url_for('login'))
+
     if request.method == 'POST':
         db.session.add(MenuCategory(name=request.form['name']))
         db.session.commit()
         return redirect(url_for('admin_dashboard'))
+
     return render_template('add_category.html')
 
 # ---------------- ITEM ----------------
 @app.route('/add-item', methods=['GET', 'POST'])
-@role_required(1)
+@login_required
 def add_item():
+    if current_user.role_id != 1:
+        return redirect(url_for('login'))
+
     categories = MenuCategory.query.all()
 
     if request.method == 'POST':
@@ -163,30 +156,13 @@ def add_item():
     return render_template('add_item.html', categories=categories)
 
 @app.route('/view-items')
-@role_required(1)
+@login_required
 def view_items():
+    if current_user.role_id != 1:
+        return redirect(url_for('login'))
+
     items = MenuItem.query.all()
     return render_template('view_items.html', items=items)
-
-@app.route('/toggle-item/<int:item_id>')
-@role_required(1)
-def toggle_item(item_id):
-    item = MenuItem.query.get_or_404(item_id)
-    item.is_available = not item.is_available
-    db.session.commit()
-    return redirect(url_for('view_items'))
-
-@app.route('/update-stock/<int:item_id>', methods=['POST'])
-@role_required(1)
-def update_stock(item_id):
-    item = MenuItem.query.get_or_404(item_id)
-    item.stock += int(request.form['added_stock'])
-
-    if item.stock > 0:
-        item.is_available = True
-
-    db.session.commit()
-    return redirect(url_for('view_items'))
 
 # ---------------- ORDERS ----------------
 @app.route('/orders')
@@ -202,8 +178,11 @@ def view_orders():
     return render_template('orders.html', orders=orders)
 
 @app.route('/create-order', methods=['GET', 'POST'])
-@role_required(2)
+@login_required
 def create_order():
+    if current_user.role_id != 2:
+        return redirect(url_for('login'))
+
     tables = Table.query.filter_by(status="Free").all()
     items = MenuItem.query.filter_by(is_available=True).all()
 
@@ -239,52 +218,83 @@ def create_order():
 
     return render_template('create_order.html', tables=tables, items=items)
 
+# ---------------- COMPLETE ORDER (WAITER) ----------------
 @app.route('/complete-order/<int:order_id>')
-@role_required(2)
+@login_required
 def complete_order(order_id):
+    if current_user.role_id != 2:
+        return redirect(url_for('login'))
+
     order = Order.query.get_or_404(order_id)
+
     order.status = "Completed"
     Table.query.get(order.table_id).status = "Free"
-    db.session.commit()
-    return redirect(url_for('waiter_dashboard'))
 
+    db.session.commit()
+
+    return redirect(url_for('view_orders'))
+# ---------------- UPDATE STOCK ----------------
+@app.route('/update-stock/<int:item_id>', methods=['POST'])
+@login_required
+def update_stock(item_id):
+    if current_user.role_id != 1:
+        return redirect(url_for('login'))
+
+    item = MenuItem.query.get_or_404(item_id)
+
+    added_stock = int(request.form['added_stock'])
+    item.stock += added_stock
+
+    if item.stock > 0:
+        item.is_available = True
+
+    db.session.commit()
+
+    return redirect(url_for('view_items'))
 # ---------------- KITCHEN ----------------
 @app.route('/kitchen-orders')
-@role_required(3)
+@login_required
 def kitchen_orders():
+    if current_user.role_id not in [1, 2, 3]:
+        return redirect(url_for('login'))
+
     orders = Order.query.filter(Order.status != "Completed").all()
     return render_template('kitchen_orders.html', orders=orders)
 
-@app.route('/start-cooking/<int:order_id>')
-@role_required(3)
-def start_cooking(order_id):
-    order = Order.query.get_or_404(order_id)
-    order.status = "Preparing"
-    db.session.commit()
-    return redirect(url_for('kitchen_orders'))
-
 @app.route('/order-ready/<int:order_id>')
-@role_required(3)
+@login_required
 def order_ready(order_id):
+    if current_user.role_id != 3:
+        return redirect(url_for('login'))
+
     order = Order.query.get_or_404(order_id)
     order.status = "Ready"
     db.session.commit()
+
     return redirect(url_for('kitchen_orders'))
 
 # ---------------- CASHIER ----------------
 @app.route('/cashier-orders')
-@role_required(4)
+@login_required
 def cashier_orders():
+    if current_user.role_id not in [1, 4]:
+        return redirect(url_for('login'))
+
     orders = Order.query.filter_by(status="Ready").all()
     return render_template('cashier_orders.html', orders=orders)
 
 @app.route('/complete-payment/<int:order_id>')
-@role_required(4)
+@login_required
 def complete_payment(order_id):
+    if current_user.role_id not in [1, 4]:
+        return redirect(url_for('login'))
+
     order = Order.query.get_or_404(order_id)
     order.status = "Completed"
     Table.query.get(order.table_id).status = "Free"
+
     db.session.commit()
+
     return redirect(url_for('cashier_orders'))
 
 # ---------------- LOGOUT ----------------
